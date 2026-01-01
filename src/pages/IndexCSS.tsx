@@ -375,7 +375,7 @@ const IndexCSS = () => {
                   <button
                     className={`record-button ${isRecording ? "recording" : ""}`}
                     onClick={isRecording ? handleStopRecording : handleStartRecording}
-                    disabled={isLoading}
+                    disabled={isLoading && !isRecording}
                   >
                     {isLoading ? (
                       <div className="spinner" />
