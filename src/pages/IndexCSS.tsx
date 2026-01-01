@@ -111,12 +111,67 @@ const IndexCSS = () => {
   const [diarizationEnabled, setDiarizationEnabled] = useState(false);
   const [conversationSegments, setConversationSegments] = useState<ConversationSegment[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [audioLevel, setAudioLevel] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const levelIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { isRecording, analyzerNode, startRecording, stopRecording } = useAudioRecorder();
   const { history, addToHistory, deleteFromHistory, clearHistory } = useTranscriptionHistory();
+
+  // Format duration as mm:ss
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Update audio level from analyzer
+  useEffect(() => {
+    if (isRecording && analyzerNode) {
+      const dataArray = new Uint8Array(analyzerNode.frequencyBinCount);
+      
+      levelIntervalRef.current = setInterval(() => {
+        analyzerNode.getByteFrequencyData(dataArray);
+        const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+        setAudioLevel((average / 255) * 100);
+      }, 50);
+    } else {
+      if (levelIntervalRef.current) {
+        clearInterval(levelIntervalRef.current);
+      }
+      setAudioLevel(0);
+    }
+
+    return () => {
+      if (levelIntervalRef.current) {
+        clearInterval(levelIntervalRef.current);
+      }
+    };
+  }, [isRecording, analyzerNode]);
+
+  // Duration counter
+  useEffect(() => {
+    if (isRecording) {
+      setRecordingDuration(0);
+      durationIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+      }
+    }
+
+    return () => {
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+      }
+    };
+  }, [isRecording]);
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -184,10 +239,20 @@ const IndexCSS = () => {
       await startRecording();
       setTranscript("");
       setSummary("");
+      setConversationSegments([]);
+      setSpeakers([]);
       toast.success("Enregistrement démarré");
     } catch (error) {
       toast.error("Impossible d'accéder au microphone");
     }
+  };
+
+  const handleCancelRecording = async () => {
+    await stopRecording();
+    setTranscript("");
+    setSummary("");
+    setRecordingDuration(0);
+    toast.info("Enregistrement annulé");
   };
 
   const handleStopRecording = async () => {
@@ -365,6 +430,14 @@ const IndexCSS = () => {
           <div className="tab-content">
             <div className="glass-card card-section">
               <div className="recording-section">
+                {/* Duration Counter */}
+                {isRecording && (
+                  <div className="duration-counter">
+                    <span className="duration-dot" />
+                    {formatDuration(recordingDuration)}
+                  </div>
+                )}
+
                 <div className="record-button-container">
                   {isRecording && (
                     <>
@@ -387,11 +460,43 @@ const IndexCSS = () => {
                   </button>
                 </div>
 
+                {/* Cancel Button */}
+                {isRecording && (
+                  <button className="btn btn-cancel" onClick={handleCancelRecording}>
+                    Annuler
+                  </button>
+                )}
+
                 <p className="recording-text">
                   {isRecording
                     ? "Cliquez pour arrêter l'enregistrement"
                     : "Cliquez pour commencer l'enregistrement"}
                 </p>
+
+                {/* VU Meter */}
+                <div className="vu-meter-container">
+                  <div className="vu-meter">
+                    <div 
+                      className="vu-meter-fill"
+                      style={{ 
+                        width: `${audioLevel}%`,
+                        background: audioLevel > 80 
+                          ? 'linear-gradient(90deg, #22c55e, #eab308, #ef4444)' 
+                          : audioLevel > 50 
+                            ? 'linear-gradient(90deg, #22c55e, #eab308)' 
+                            : '#22c55e'
+                      }}
+                    />
+                    <div className="vu-meter-markers">
+                      <span>0</span>
+                      <span className="marker-yellow">-12</span>
+                      <span className="marker-red">0 dB</span>
+                    </div>
+                  </div>
+                  <div className="vu-meter-level">
+                    {Math.round(audioLevel)}%
+                  </div>
+                </div>
 
                 <div className="visualizer-container">
                   <AudioVisualizerCSS isActive={isRecording} analyzerNode={analyzerNode} />
@@ -466,11 +571,15 @@ const IndexCSS = () => {
         {/* Results */}
         {(transcript || isLoading) && (
           <div className="results-section">
-            <div className="glass-card result-card">
+            {/* Transcription Card */}
+            <div className="glass-card result-card transcription-card">
               <div className="result-header">
                 <div className="result-title">
                   <SparklesIcon />
-                  Transcription
+                  <span>Transcription</span>
+                  {transcript && (
+                    <span className="word-count">{transcript.split(/\s+/).filter(Boolean).length} mots</span>
+                  )}
                 </div>
                 {transcript && (
                   <button className="btn btn-ghost" onClick={copyTranscript}>
@@ -488,21 +597,27 @@ const IndexCSS = () => {
                 ) : mode === "conversation" && diarizationEnabled && conversationSegments.length > 0 ? (
                   <ConversationViewCSS segments={conversationSegments} speakers={speakers} />
                 ) : (
-                  <p className="result-text">{transcript}</p>
+                  <div className="transcript-display">
+                    <p className="result-text">{transcript}</p>
+                  </div>
                 )}
               </div>
             </div>
 
+            {/* Summary Card */}
             {summary && (
               <div className="glass-card result-card summary-card">
                 <div className="result-header">
                   <div className="result-title">
                     <SparklesIcon />
-                    Résumé
+                    <span>Résumé</span>
                   </div>
                 </div>
-                <div className="result-content">
-                  <p className="result-text">{summary}</p>
+                <div className="result-content summary-content">
+                  <div className="summary-display">
+                    <div className="summary-icon">💡</div>
+                    <p className="summary-text">{summary}</p>
+                  </div>
                 </div>
               </div>
             )}
