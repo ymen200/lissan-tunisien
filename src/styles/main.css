@@ -434,6 +434,7 @@ body {
   inset: -20px;
   border: 2px solid var(--color-accent);
   border-radius: 50%;
+  pointer-events: none;
   animation: pulse-ring 2s ease-out infinite;
 }
 
