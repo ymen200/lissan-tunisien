@@ -1102,3 +1102,15 @@ body {
 .hidden-input {
   display: none;
 }
+
+/* Call tab special styling */
+.mode-tab.call-tab {
+  background: linear-gradient(135deg, var(--color-accent), var(--color-secondary));
+  color: white;
+  border-color: transparent;
+}
+
+.mode-tab.call-tab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(255, 0, 128, 0.4);
+}
